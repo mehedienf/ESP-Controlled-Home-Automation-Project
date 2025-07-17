@@ -389,7 +389,7 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(                              // Main app structure with app bar and body
-      appBar: AppBar(title: const Text('WIFI Controller')), // Top app bar with title
+      appBar: AppBar(title: const Text('ESP Controller')), // Top app bar with title
       body: Container(
         color: Colors.white, // <-- এখানেই মূল সাদা background
         child: Column(                               // Vertical layout for main content

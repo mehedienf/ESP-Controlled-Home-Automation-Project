@@ -8,13 +8,7 @@
 
 #include <SoftwareSerial.h>  // For ESP8266 communication
 #include <String.h>
-
-// ESP8266 WiFi module communication
-SoftwareSerial esp8266(2, 3);  // RX=D2, TX=D3 for ESP8266
-
-// WiFi credentials for Access Point mode
-const String ssid = "ESP_Controller";     // WiFi network name
-const String password = "12345678";       // WiFi password (min 8 characters)
+#include <Arduino.h>         // Arduino core library
 
 // ESP8266 WiFi module communication
 SoftwareSerial esp8266(2, 3);  // RX=D2, TX=D3 for ESP8266
