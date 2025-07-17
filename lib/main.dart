@@ -247,7 +247,8 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
             width: double.infinity,                  // Card এর সমান width
             padding: EdgeInsets.symmetric(vertical: 8), // Vertical padding for height
             decoration: BoxDecoration(
-              color: Colors.blue[600],               // Same blue color for all devices
+              color: Colors.blue[600],
+              // color: Colors.transparent,              // Same blue color for all devices
               // Remove borderRadius since it's now clipped by card
             ),
             child: Text(
@@ -363,7 +364,7 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
                       children: [
                         // ADJUSTED POSITION - Slider moved lower
                         if (showSlider) ...[
-                          Spacer(flex: 8),               // More space above slider (pushes slider down)
+                          Spacer(flex: 6),               // More space above slider (pushes slider down)
                           sliderWidget,                  // Slider widget for fan (MOVED LOWER)
                           Spacer(flex: 1),               // Less space below slider
                         ] else ...[
