@@ -204,14 +204,14 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
     // Add slider widget only if showSlider parameter is true
     if (showSlider) {
       sliderWidget = Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 6.0), // Removed horizontal padding for wider slider, reduced vertical padding
+        padding: const EdgeInsets.symmetric(horizontal: 0.0, vertical: 0.0), // Reduced vertical padding from 6.0 to 2.0
         child: Opacity(
           opacity: (!deviceOn || autoValue) ? 0.3 : 1.0, // Make slider faded when device is OFF or AUTO mode is ON
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
               trackHeight: 2.0,              // Thinner track for more subtle appearance
               thumbShape: RoundSliderThumbShape(enabledThumbRadius: 0.0), // Smaller thumb
-              overlayShape: RoundSliderOverlayShape(overlayRadius: 5.0),  // Smaller touch area
+              overlayShape: RoundSliderOverlayShape(overlayRadius: 10.0),  // Smaller touch area
               activeTrackColor: Colors.blue,  // Active track color
               inactiveTrackColor: Colors.grey[300], // Inactive track color
               thumbColor: Colors.blue[700],   // Thumb color
@@ -233,96 +233,153 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
     
     // Return card widget containing device controls with enhanced styling
     return Card(
-      elevation: 4,                // Card shadow depth
-      margin: EdgeInsets.all(8),   // Margin around card
-      shape: RoundedRectangleBorder( // Card shape with rounded corners
+      elevation: 4,                                  // Card shadow depth
+      margin: EdgeInsets.all(4),                     // Margin around card
+      // color: Colors.transparent,                      // Card background color
+      shape: RoundedRectangleBorder(                 // Card shape with rounded corners
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Padding(              // Padding inside card
-        padding: EdgeInsets.all(12),
-        child: Column(             // Vertical layout for card contents
-          mainAxisAlignment: MainAxisAlignment.spaceAround, // Changed to spaceAround for better distribution
-          children: [
-            // Device name/title at the top
-            Text(
-              label,               // Device name (LIGHT, FAN, PUMP, HUMIDIFIER)
+      clipBehavior: Clip.antiAlias,                  // Clip content to card bounds
+      child: Column(                                 // Change to Column instead of Padding
+        children: [
+          // Device name/title panel at the very top
+          Container(
+            width: double.infinity,                  // Card এর সমান width
+            padding: EdgeInsets.symmetric(vertical: 8), // Vertical padding for height
+            decoration: BoxDecoration(
+              color: Colors.blue[600],               // Same blue color for all devices
+              // Remove borderRadius since it's now clipped by card
+            ),
+            child: Text(
+              label,                                 // Device name (LIGHT, FAN, PUMP, HUMIDIFIER)
+              textAlign: TextAlign.center,           // Center align text
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue[800],
+                fontSize: 16,                        // Font size
+                fontWeight: FontWeight.bold,         // Bold text
+                color: Colors.white,                 // White text on blue background
+                letterSpacing: 1.0,                  // Letter spacing for better readability
               ),
             ),
-            
-            // AUTO mode toggle section
-            Row(                   // Horizontal layout for AUTO label and switch
-              mainAxisAlignment: MainAxisAlignment.spaceBetween, // Space between label and switch
-              children: [
-                Text(
-                  'AUTO',          // AUTO mode label
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: autoValue ? Colors.green : Colors.grey[600],
+          ),
+          
+          // Card content area
+          Expanded(
+            child: Padding(                          // Padding inside card content
+              padding: EdgeInsets.all(12),
+              child: Column(                         // Vertical layout for card contents
+                children: [
+                  // AUTO mode toggle section at top
+                  Row(                               // Horizontal layout for AUTO label and switch
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween, // Space between label and switch
+                    children: [
+                      Text(
+                        'AUTO',                      // AUTO mode label
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: autoValue ? Colors.green : Colors.grey[600],
+                        ),
+                      ),
+                      
+                      // Custom toggle switch for AUTO mode
+                      GestureDetector(
+                        onTap: () {
+                          bool newValue = !autoValue;
+                          onAutoChanged(newValue);
+                          _sendAutoCommand(label.toLowerCase(), newValue);
+                        },
+                        child: Container(
+                          width: 45,                                   // Toggle width
+                          height: 24,                                  // Toggle height
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),   // Rounded track
+                            color: autoValue 
+                                ? Color(0xFF4CAF50)                    // Green background when ON
+                                : Color(0xFFE0E0E0),                   // Light grey background when OFF
+                          ),
+                          child: AnimatedAlign(
+                            duration: Duration(milliseconds: 200),     // Smooth animation
+                            curve: Curves.easeInOut,                   // Natural animation curve
+                            alignment: autoValue 
+                                ? Alignment.centerRight               // Thumb on right when ON
+                                : Alignment.centerLeft,               // Thumb on left when OFF
+                            child: Container(
+                              width: 20,                              // Thumb width
+                              height: 20,                             // Thumb height
+                              margin: EdgeInsets.all(2),              // Small margin around thumb
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,               // Perfect circle thumb
+                                color: Colors.white,                  // White thumb color
+                                boxShadow: [                          // Subtle shadow
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    offset: Offset(0, 1),
+                                    blurRadius: 2,
+                                    spreadRadius: 0,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Transform.scale(   // Scale down the switch to make it smaller
-                  scale: 0.8,      // Make switch 80% of original size
-                  child: Switch(   // Toggle switch for AUTO mode
-                    value: autoValue, // Current switch state
-                    activeColor: Colors.green, // Switch color when ON
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap, // Reduce tap target size
-                    onChanged: (val) { // Callback when switch is toggled
-                      onAutoChanged(val); // Update local state
-                      _sendAutoCommand(label.toLowerCase(), val); // Send AUTO state to ESP
-                    },
+                  
+                  // Fixed spacing to align buttons across all cards
+                  SizedBox(height: 25),                // Fixed height for consistent button position
+                  
+                  // Device control button - PERFECTLY ALIGNED ACROSS ALL CARDS
+                  Container(
+                    width: double.infinity,          // Full width button
+                    padding: EdgeInsets.symmetric(horizontal: 20), // Horizontal padding
+                    child: ElevatedButton(
+                      onPressed: () {
+                        onDeviceChanged(!deviceOn); // Toggle device ON/OFF state
+                        _sendCommand(cmd);           // Send command to ESP
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: deviceOn ? Colors.green : Colors.grey, // Green when ON, grey when OFF
+                        foregroundColor: Colors.white, // Always white text
+                        padding: EdgeInsets.symmetric(vertical: 3), // Vertical padding
+                        shape: RoundedRectangleBorder( // Button shape
+                          borderRadius: BorderRadius.circular(20), // Rounded button
+                        ),
+                        elevation: 2,                // Shadow
+                      ),
+                      child: Text(
+                        deviceOn ? 'ON' : 'OFF',     // Show current state
+                        style: TextStyle(
+                          fontSize: 14,              // Font size
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ],
-            ),
-            
-            // Device control button in center with enhanced styling
-            Container(
-              width: double.infinity, // Full width button
-              padding: EdgeInsets.symmetric(horizontal: 20), // Add horizontal padding to make button smaller
-              child: ElevatedButton(
-                onPressed: () {
-                  onDeviceChanged(!deviceOn); // Toggle device ON/OFF state
-                  _sendCommand(cmd); // Send command to ESP
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: deviceOn ? Colors.green : Colors.grey, // Green when ON, grey when OFF
-                  foregroundColor: Colors.white, // Always white text
-                  padding: EdgeInsets.symmetric(vertical: 3), // Reduced vertical padding for smaller button
-                  shape: RoundedRectangleBorder( // Button shape
-                    borderRadius: BorderRadius.circular(20), // Increased border radius for more rounded button
+                  
+                  // EXPANDED LAYOUT - Bottom space divided for slider positioning
+                  Expanded(
+                    child: Column(
+                      children: [
+                        // ADJUSTED POSITION - Slider moved lower
+                        if (showSlider) ...[
+                          Spacer(flex: 8),               // More space above slider (pushes slider down)
+                          sliderWidget,                  // Slider widget for fan (MOVED LOWER)
+                          Spacer(flex: 1),               // Less space below slider
+                        ] else ...[
+                          Spacer(),                      // Fill all remaining space for non-slider cards
+                        ],
+                      ],
+                    ),
                   ),
-                  elevation: 2, // Always has shadow
-                ),
-                child: Text(
-                  deviceOn ? 'ON' : 'OFF', // Show current state
-                  style: TextStyle(
-                    fontSize: 14,    // Reduced font size for smaller button
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                  
+                  // Small bottom padding
+                  SizedBox(height: 0),
+                ],
               ),
             ),
-            
-            // Slider widget at bottom (only visible for fan)
-            sliderWidget,
-            
-            // Show current fan speed value if slider is visible
-            if (showSlider)
-              Text(
-                '${_fanSliderValue.toInt()}%', // Display current fan speed percentage
-                style: TextStyle(
-                  fontSize: 12,
-                  color: (!deviceOn || autoValue) ? Colors.grey : Colors.blue, // Grey when device OFF or AUTO mode, blue otherwise
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -331,66 +388,69 @@ class _ESPControllerPageState extends State<ESPControllerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(                              // Main app structure with app bar and body
-      appBar: AppBar(title: const Text('ESP Wi-Fi Controller')), // Top app bar with title
-      body: Column(                               // Vertical layout for main content
-        children: [
-          SizedBox(                               // Fixed height container for device cards
-            height: 420,                          // Increased height for better card spacing
-            child: GridView.count(                // Grid layout for device cards
-              crossAxisCount: 2,                  // 2 cards per row
-              physics: NeverScrollableScrollPhysics(), // Disable scrolling for grid
-              padding: EdgeInsets.all(8),         // Padding around entire grid
-              mainAxisSpacing: 8,                 // Vertical spacing between cards
-              crossAxisSpacing: 8,                // Horizontal spacing between cards
-              childAspectRatio: 0.85,             // Increased aspect ratio to make cards taller and prevent overflow
-              children: [                         // List of device cards
-                // Light control card with AUTO toggle
-                _buildDeviceCard('LIGHT', 'A', _lightAuto, (val) => setState(() => _lightAuto = val), _lightOn, (val) => setState(() => _lightOn = val)),
-                // Fan control card with AUTO toggle and slider
-                _buildDeviceCard('FAN', 'B', _fanAuto, (val) => setState(() => _fanAuto = val), _fanOn, (val) => setState(() => _fanOn = val), showSlider: true),
-                // Pump control card with AUTO toggle
-                _buildDeviceCard('PUMP', 'C', _pumpAuto, (val) => setState(() => _pumpAuto = val), _pumpOn, (val) => setState(() => _pumpOn = val)),
-                // Humidifier control card with AUTO toggle
-                _buildDeviceCard('HUMIDIFIER', 'D', _humidifierAuto, (val) => setState(() => _humidifierAuto = val), _humidifierOn, (val) => setState(() => _humidifierOn = val)),
-              ],
-            ),
-          ),
-          Expanded(                               // Expandable container for terminal output
-            child: Container(                     // Terminal-style container
-              margin: EdgeInsets.all(8),          // Outer spacing around container
-              padding: EdgeInsets.all(12),        // Inner spacing inside container
-              decoration: BoxDecoration(           // Container styling
-                color: Colors.black,              // Black background like terminal
-                border: Border.all(color: Colors.grey), // Grey border around container
-                borderRadius: BorderRadius.circular(8),  // Rounded corners
+      appBar: AppBar(title: const Text('WIFI Controller')), // Top app bar with title
+      body: Container(
+        color: Colors.white, // <-- এখানেই মূল সাদা background
+        child: Column(                               // Vertical layout for main content
+          children: [
+            SizedBox(                               // Fixed height container for device cards
+              height: 420,                          // Increased height for better card spacing
+              child: GridView.count(                // Grid layout for device cards
+                crossAxisCount: 2,                  // 2 cards per row
+                physics: NeverScrollableScrollPhysics(), // Disable scrolling for grid
+                padding: EdgeInsets.all(8),         // Padding around entire grid
+                mainAxisSpacing: 8,                 // Vertical spacing between cards
+                crossAxisSpacing: 8,                // Horizontal spacing between cards
+                childAspectRatio: 0.85,             // Increased aspect ratio to make cards taller and prevent overflow
+                children: [                         // List of device cards
+                  // Light control card with AUTO toggle
+                  _buildDeviceCard('LIGHT', 'A', _lightAuto, (val) => setState(() => _lightAuto = val), _lightOn, (val) => setState(() => _lightOn = val)),
+                  // Fan control card with AUTO toggle and slider
+                  _buildDeviceCard('FAN', 'B', _fanAuto, (val) => setState(() => _fanAuto = val), _fanOn, (val) => setState(() => _fanOn = val), showSlider: true),
+                  // Pump control card with AUTO toggle
+                  _buildDeviceCard('PUMP', 'C', _pumpAuto, (val) => setState(() => _pumpAuto = val), _pumpOn, (val) => setState(() => _pumpOn = val)),
+                  // Humidifier control card with AUTO toggle
+                  _buildDeviceCard('HUMIDIFIER', 'D', _humidifierAuto, (val) => setState(() => _humidifierAuto = val), _humidifierOn, (val) => setState(() => _humidifierOn = val)),
+                ],
               ),
-              child: SingleChildScrollView(       // Scrollable content area
-                child: Column(                    // Vertical layout for text content
-                  crossAxisAlignment: CrossAxisAlignment.start, // Left-align text
-                  children: [
-                    Text(                         // ESP response text display
-                      'ESP Response:\n$_response', // Label and response content
-                      style: TextStyle(           // Text styling
-                        color: Colors.green,      // Green text color (terminal style)
-                        fontFamily: 'monospace',  // Monospace font (terminal style)
-                        fontSize: 12,             // Small font size
+            ),
+            Expanded(                               // Expandable container for terminal output
+              child: Container(                     // Terminal-style container
+                margin: EdgeInsets.all(8),          // Outer spacing around container
+                padding: EdgeInsets.all(12),        // Inner spacing inside container
+                decoration: BoxDecoration(           // Container styling
+                  color: Colors.black,              // Black background like terminal
+                  border: Border.all(color: Colors.grey), // Grey border around container
+                  borderRadius: BorderRadius.circular(8),  // Rounded corners
+                ),
+                child: SingleChildScrollView(       // Scrollable content area
+                  child: Column(                    // Vertical layout for text content
+                    crossAxisAlignment: CrossAxisAlignment.start, // Left-align text
+                    children: [
+                      Text(                         // ESP response text display
+                        'ESP Response:\n$_response', // Label and response content
+                        style: TextStyle(           // Text styling
+                          color: Colors.green,      // Green text color (terminal style)
+                          fontFamily: 'monospace',  // Monospace font (terminal style)
+                          fontSize: 12,             // Small font size
+                        ),
                       ),
-                    ),
-                    SizedBox(height: 16),         // Vertical spacing between sections
-                    Text(                         // ESP status text display
-                      'ESP Status:\n$_status',    // Label and status content
-                      style: TextStyle(           // Text styling
-                        color: Colors.cyan,       // Cyan text color (terminal style)
-                        fontFamily: 'monospace',  // Monospace font (terminal style)
-                        fontSize: 12,             // Small font size
+                      SizedBox(height: 16),         // Vertical spacing between sections
+                      Text(                         // ESP status text display
+                        'ESP Status:\n$_status',    // Label and status content
+                        style: TextStyle(           // Text styling
+                          color: Colors.cyan,       // Cyan text color (terminal style)
+                          fontFamily: 'monospace',  // Monospace font (terminal style)
+                          fontSize: 12,             // Small font size
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
