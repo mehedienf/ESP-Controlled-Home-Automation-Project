@@ -1,22 +1,27 @@
 /*
- * ESP32/ESP8266 Web Server for Home Automation Controller
+ * Arduino Uno + ESP8266 WiFi Module Web Server for Home Automation Controller
  * Handles endpoints for Flutter app synchronization
+ * Hardware: Arduino Uno + ESP8266 (AT Commands)
  * Author: Your Name
  * Date: July 17, 2025
  */
 
-#include <WiFi.h>          // For ESP32
-// #include <ESP8266WiFi.h>   // For ESP8266 (uncomment this and comment above line)
-#include <WebServer.h>     // For ESP32
-// #include <ESP8266WebServer.h>  // For ESP8266 (uncomment this and comment above line)
+#include <SoftwareSerial.h>  // For ESP8266 communication
+#include <String.h>
+
+// ESP8266 WiFi module communication
+SoftwareSerial esp8266(2, 3);  // RX=D2, TX=D3 for ESP8266
 
 // WiFi credentials for Access Point mode
-const char* ssid = "ESP_Controller";     // WiFi network name
-const char* password = "12345678";       // WiFi password (min 8 characters)
+const String ssid = "ESP_Controller";     // WiFi network name
+const String password = "12345678";       // WiFi password (min 8 characters)
 
-// Create web server on port 80
-WebServer server(80);   // For ESP32
-// ESP8266WebServer server(80);  // For ESP8266
+// ESP8266 WiFi module communication
+SoftwareSerial esp8266(2, 3);  // RX=D2, TX=D3 for ESP8266
+
+// WiFi credentials for Access Point mode
+const String ssid = "ESP_Controller";     // WiFi network name
+const String password = "12345678";       // WiFi password (min 8 characters)
 
 // Device state variables
 bool lightAuto = false;      // Light AUTO mode state
@@ -25,16 +30,23 @@ bool pumpAuto = false;       // Pump AUTO mode state
 bool humidifierAuto = false; // Humidifier AUTO mode state
 int fanSpeed = 50;           // Fan speed value (0-100)
 
-// Device control pins (adjust according to your hardware)
-#define LIGHT_PIN 2          // GPIO pin for light control
-#define FAN_PIN 4            // GPIO pin for fan control
-#define PUMP_PIN 5           // GPIO pin for pump control
-#define HUMIDIFIER_PIN 18    // GPIO pin for humidifier control
-#define FAN_SPEED_PIN 19     // PWM pin for fan speed control
+// Device ON/OFF states
+bool lightOn = false;        // Light ON/OFF state
+bool fanOn = false;          // Fan ON/OFF state
+bool pumpOn = false;         // Pump ON/OFF state
+bool humidifierOn = false;   // Humidifier ON/OFF state
+
+// Device control pins (Arduino Uno digital pins)
+#define LIGHT_PIN 4          // Digital pin for light control
+#define FAN_PIN 5            // Digital pin for fan control
+#define PUMP_PIN 6           // Digital pin for pump control
+#define HUMIDIFIER_PIN 7     // Digital pin for humidifier control
+#define FAN_SPEED_PIN 9      // PWM pin for fan speed control (Pin 9 has PWM)
 
 void setup() {
-  Serial.begin(115200);
-  Serial.println("Starting ESP Controller...");
+  Serial.begin(9600);        // Serial monitor communication
+  esp8266.begin(9600);       // ESP8266 communication
+  Serial.println("Starting Arduino + ESP8266 Controller...");
   
   // Initialize GPIO pins
   pinMode(LIGHT_PIN, OUTPUT);
@@ -50,138 +62,216 @@ void setup() {
   digitalWrite(HUMIDIFIER_PIN, LOW);
   analogWrite(FAN_SPEED_PIN, map(fanSpeed, 0, 100, 0, 255));
   
-  // Start WiFi Access Point
-  WiFi.softAP(ssid, password);
-  IPAddress IP = WiFi.softAPIP();
-  Serial.print("Access Point IP: ");
-  Serial.println(IP);
+  // Initialize ESP8266
+  initializeESP8266();
   
-  // Setup web server endpoints
-  setupWebServerRoutes();
-  
-  // Start the server
-  server.begin();
-  Serial.println("Web server started!");
+  Serial.println("System ready!");
 }
 
 void loop() {
-  server.handleClient();  // Handle incoming client requests
-  delay(10);              // Small delay for stability
+  // Check for incoming ESP8266 data
+  if (esp8266.available()) {
+    String request = esp8266.readString();
+    Serial.println("Received: " + request);
+    
+    // Process HTTP request
+    String response = processHTTPRequest(request);
+    
+    // Send response back through ESP8266
+    if (response != "") {
+      sendHTTPResponse(response);
+    }
+  }
+  
+  // Handle automatic modes (call every few seconds)
+  static unsigned long lastAutoCheck = 0;
+  if (millis() - lastAutoCheck > 5000) {  // Check every 5 seconds
+    handleAutoModes();
+    lastAutoCheck = millis();
+  }
+  
+  delay(100);              // Small delay for stability
 }
 
-// Function to setup all web server routes/endpoints
-void setupWebServerRoutes() {
+// Function to initialize ESP8266 WiFi module
+void initializeESP8266() {
+  Serial.println("Initializing ESP8266...");
   
-  // ============ COMMAND ENDPOINTS ============
+  // Reset ESP8266
+  sendATCommand("AT+RST", 2000);
   
-  // Handle device commands from Flutter app
-  server.on("/send", HTTP_GET, []() {
-    String command = server.arg("c");  // Get command parameter
-    String response = handleDeviceCommand(command);
-    server.send(200, "text/plain", response);
-    Serial.println("Command: " + command + " | Response: " + response);
-  });
+  // Set WiFi mode to Access Point
+  sendATCommand("AT+CWMODE=2", 1000);
   
-  // ============ STATUS ENDPOINT ============
+  // Configure Access Point
+  String apConfig = "AT+CWSAP=\"" + ssid + "\",\"" + password + "\",5,3";
+  sendATCommand(apConfig, 3000);
   
-  // Provide system status information
-  server.on("/status", HTTP_GET, []() {
-    String status = "Light: " + String(digitalRead(LIGHT_PIN) ? "ON" : "OFF") + 
-                   " | Fan: " + String(digitalRead(FAN_PIN) ? "ON" : "OFF") +
-                   " | Pump: " + String(digitalRead(PUMP_PIN) ? "ON" : "OFF") +
-                   " | Humidifier: " + String(digitalRead(HUMIDIFIER_PIN) ? "ON" : "OFF") +
-                   " | Fan Speed: " + String(fanSpeed) + "%";
-    server.send(200, "text/plain", status);
-  });
+  // Enable multiple connections
+  sendATCommand("AT+CIPMUX=1", 1000);
   
-  // ============ SYNCHRONIZATION ENDPOINTS ============
+  // Start server on port 80
+  sendATCommand("AT+CIPSERVER=1,80", 1000);
   
-  // Get current fan speed value
-  server.on("/fanspeed", HTTP_GET, []() {
-    server.send(200, "text/plain", String(fanSpeed));
-  });
-  
-  // Get light AUTO mode state
-  server.on("/lightauto", HTTP_GET, []() {
-    server.send(200, "text/plain", lightAuto ? "1" : "0");
-  });
-  
-  // Get fan AUTO mode state
-  server.on("/fanauto", HTTP_GET, []() {
-    server.send(200, "text/plain", fanAuto ? "1" : "0");
-  });
-  
-  // Get pump AUTO mode state
-  server.on("/pumpauto", HTTP_GET, []() {
-    server.send(200, "text/plain", pumpAuto ? "1" : "0");
-  });
-  
-  // Get humidifier AUTO mode state
-  server.on("/humidifierauto", HTTP_GET, []() {
-    server.send(200, "text/plain", humidifierAuto ? "1" : "0");
-  });
-  
-  // ============ AUTO MODE CONTROL ENDPOINTS ============
-  
-  // Set light AUTO mode
-  server.on("/setlightauto", HTTP_GET, []() {
-    String value = server.arg("value");
-    lightAuto = (value == "1");
-    server.send(200, "text/plain", "Light AUTO: " + String(lightAuto ? "ON" : "OFF"));
-  });
-  
-  // Set fan AUTO mode
-  server.on("/setfanauto", HTTP_GET, []() {
-    String value = server.arg("value");
-    fanAuto = (value == "1");
-    server.send(200, "text/plain", "Fan AUTO: " + String(fanAuto ? "ON" : "OFF"));
-  });
-  
-  // Set pump AUTO mode
-  server.on("/setpumpauto", HTTP_GET, []() {
-    String value = server.arg("value");
-    pumpAuto = (value == "1");
-    server.send(200, "text/plain", "Pump AUTO: " + String(pumpAuto ? "ON" : "OFF"));
-  });
-  
-  // Set humidifier AUTO mode
-  server.on("/sethumidifierauto", HTTP_GET, []() {
-    String value = server.arg("value");
-    humidifierAuto = (value == "1");
-    server.send(200, "text/plain", "Humidifier AUTO: " + String(humidifierAuto ? "ON" : "OFF"));
-  });
-  
-  // Handle 404 errors
-  server.onNotFound([]() {
-    server.send(404, "text/plain", "Endpoint not found");
-  });
+  Serial.println("ESP8266 initialized as Access Point");
+  Serial.println("SSID: " + ssid);
+  Serial.println("Password: " + password);
 }
+
+// Function to send AT commands to ESP8266
+void sendATCommand(String command, int timeout) {
+  esp8266.println(command);
+  Serial.println("Sent: " + command);
+  
+  long int time = millis();
+  while ((time + timeout) > millis()) {
+    while (esp8266.available()) {
+      String response = esp8266.readString();
+      Serial.print("ESP8266: " + response);
+    }
+  }
+}
+
+// Function to process HTTP requests
+String processHTTPRequest(String request) {
+  String response = "";
+  
+  // Parse GET request
+  if (request.indexOf("GET /send?c=") >= 0) {
+    int cmdStart = request.indexOf("c=") + 2;
+    int cmdEnd = request.indexOf(" ", cmdStart);
+    if (cmdEnd == -1) cmdEnd = request.indexOf("&", cmdStart);
+    if (cmdEnd == -1) cmdEnd = request.length();
+    
+    String command = request.substring(cmdStart, cmdEnd);
+    response = handleDeviceCommand(command);
+  }
+  else if (request.indexOf("GET /status") >= 0) {
+    response = getSystemStatus();
+  }
+  else if (request.indexOf("GET /fanspeed") >= 0) {
+    response = String(fanSpeed);
+  }
+  else if (request.indexOf("GET /lightstate") >= 0) {
+    response = digitalRead(LIGHT_PIN) ? "1" : "0";
+  }
+  else if (request.indexOf("GET /fanstate") >= 0) {
+    response = digitalRead(FAN_PIN) ? "1" : "0";
+  }
+  else if (request.indexOf("GET /pumpstate") >= 0) {
+    response = digitalRead(PUMP_PIN) ? "1" : "0";
+  }
+  else if (request.indexOf("GET /humidifierstate") >= 0) {
+    response = digitalRead(HUMIDIFIER_PIN) ? "1" : "0";
+  }
+  else if (request.indexOf("GET /lightauto") >= 0) {
+    response = lightAuto ? "1" : "0";
+  }
+  else if (request.indexOf("GET /fanauto") >= 0) {
+    response = fanAuto ? "1" : "0";
+  }
+  else if (request.indexOf("GET /pumpauto") >= 0) {
+    response = pumpAuto ? "1" : "0";
+  }
+  else if (request.indexOf("GET /humidifierauto") >= 0) {
+    response = humidifierAuto ? "1" : "0";
+  }
+  else if (request.indexOf("GET /setlightauto?value=") >= 0) {
+    String value = extractParameter(request, "value=");
+    lightAuto = (value == "1");
+    response = "Light AUTO: " + String(lightAuto ? "ON" : "OFF");
+  }
+  else if (request.indexOf("GET /setfanauto?value=") >= 0) {
+    String value = extractParameter(request, "value=");
+    fanAuto = (value == "1");
+    response = "Fan AUTO: " + String(fanAuto ? "ON" : "OFF");
+  }
+  else if (request.indexOf("GET /setpumpauto?value=") >= 0) {
+    String value = extractParameter(request, "value=");
+    pumpAuto = (value == "1");
+    response = "Pump AUTO: " + String(pumpAuto ? "ON" : "OFF");
+  }
+  else if (request.indexOf("GET /sethumidifierauto?value=") >= 0) {
+    String value = extractParameter(request, "value=");
+    humidifierAuto = (value == "1");
+    response = "Humidifier AUTO: " + String(humidifierAuto ? "ON" : "OFF");
+  }
+  
+  return response;
+}
+
+// Function to extract parameter from HTTP request
+String extractParameter(String request, String paramName) {
+  int paramStart = request.indexOf(paramName) + paramName.length();
+  int paramEnd = request.indexOf(" ", paramStart);
+  if (paramEnd == -1) paramEnd = request.indexOf("&", paramStart);
+  if (paramEnd == -1) paramEnd = request.length();
+  
+  return request.substring(paramStart, paramEnd);
+}
+
+// Function to send HTTP response
+void sendHTTPResponse(String content) {
+  String httpResponse = "HTTP/1.1 200 OK\r\n";
+  httpResponse += "Content-Type: text/plain\r\n";
+  httpResponse += "Content-Length: " + String(content.length()) + "\r\n";
+  httpResponse += "Connection: close\r\n\r\n";
+  httpResponse += content;
+  
+  // Send response length first
+  String cipSend = "AT+CIPSEND=0," + String(httpResponse.length());
+  esp8266.println(cipSend);
+  delay(100);
+  
+  // Send actual response
+  esp8266.print(httpResponse);
+  delay(100);
+  
+  // Close connection
+  esp8266.println("AT+CIPCLOSE=0");
+}
+
+// Function to get system status
+String getSystemStatus() {
+  String status = "Light: " + String(digitalRead(LIGHT_PIN) ? "ON" : "OFF") + 
+                 " | Fan: " + String(digitalRead(FAN_PIN) ? "ON" : "OFF") +
+                 " | Pump: " + String(digitalRead(PUMP_PIN) ? "ON" : "OFF") +
+                 " | Humidifier: " + String(digitalRead(HUMIDIFIER_PIN) ? "ON" : "OFF") +
+                 " | Fan Speed: " + String(fanSpeed) + "%";
+  return status;
+}
+
+
 
 // Function to handle device commands from Flutter app
 String handleDeviceCommand(String command) {
   
   // Light control (Command: A)
   if (command == "A") {
-    digitalWrite(LIGHT_PIN, !digitalRead(LIGHT_PIN));  // Toggle light
-    return "Light " + String(digitalRead(LIGHT_PIN) ? "ON" : "OFF");
+    lightOn = !lightOn;  // Toggle light state
+    digitalWrite(LIGHT_PIN, lightOn ? HIGH : LOW);
+    return "Light " + String(lightOn ? "ON" : "OFF");
   }
   
   // Fan control (Command: B)
   else if (command == "B") {
-    digitalWrite(FAN_PIN, !digitalRead(FAN_PIN));      // Toggle fan
-    return "Fan " + String(digitalRead(FAN_PIN) ? "ON" : "OFF");
+    fanOn = !fanOn;  // Toggle fan state
+    digitalWrite(FAN_PIN, fanOn ? HIGH : LOW);
+    return "Fan " + String(fanOn ? "ON" : "OFF");
   }
   
   // Pump control (Command: C)
   else if (command == "C") {
-    digitalWrite(PUMP_PIN, !digitalRead(PUMP_PIN));    // Toggle pump
-    return "Pump " + String(digitalRead(PUMP_PIN) ? "ON" : "OFF");
+    pumpOn = !pumpOn;  // Toggle pump state
+    digitalWrite(PUMP_PIN, pumpOn ? HIGH : LOW);
+    return "Pump " + String(pumpOn ? "ON" : "OFF");
   }
   
   // Humidifier control (Command: D)
   else if (command == "D") {
-    digitalWrite(HUMIDIFIER_PIN, !digitalRead(HUMIDIFIER_PIN)); // Toggle humidifier
-    return "Humidifier " + String(digitalRead(HUMIDIFIER_PIN) ? "ON" : "OFF");
+    humidifierOn = !humidifierOn;  // Toggle humidifier state
+    digitalWrite(HUMIDIFIER_PIN, humidifierOn ? HIGH : LOW);
+    return "Humidifier " + String(humidifierOn ? "ON" : "OFF");
   }
   
   // Fan speed control (Command: FAN:xx where xx is speed 0-100)
@@ -203,28 +293,32 @@ String handleDeviceCommand(String command) {
   }
 }
 
-// Optional: Function to handle automatic mode logic
+// Function to handle automatic mode logic
 void handleAutoModes() {
-  // Add your automatic control logic here
-  // This function can be called periodically to handle AUTO modes
+  // This function can be called periodically in loop() to handle AUTO modes
+  // Only control devices when they are in AUTO mode AND manually turned ON
   
-  if (lightAuto) {
-    // Example: Turn on light based on time or sensor
-    // You can add LDR sensor logic here
+  if (lightAuto && lightOn) {
+    // Example: Control light based on time or LDR sensor
+    // Add your automatic light control logic here
+    // e.g., turn off during day, on during night
   }
   
-  if (fanAuto) {
-    // Example: Control fan based on temperature
-    // You can add temperature sensor logic here
+  if (fanAuto && fanOn) {
+    // Example: Control fan speed based on temperature
+    // Add your automatic fan control logic here
+    // e.g., adjust fanSpeed based on temperature sensor reading
   }
   
-  if (pumpAuto) {
+  if (pumpAuto && pumpOn) {
     // Example: Control pump based on soil moisture
-    // You can add moisture sensor logic here
+    // Add your automatic pump control logic here
+    // e.g., turn on when soil is dry
   }
   
-  if (humidifierAuto) {
+  if (humidifierAuto && humidifierOn) {
     // Example: Control humidifier based on humidity
-    // You can add humidity sensor logic here
+    // Add your automatic humidifier control logic here
+    // e.g., turn on when humidity is low
   }
 }
